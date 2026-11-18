@@ -90,7 +90,7 @@ function enter(n) {
   onValue(r(`rooms/${code}/title`), (s) => {
     const t = s.val() || "";
     roomTitleEl.textContent = t;
-    document.title = t ? `${t} · Participar` : "Participar";
+    document.title = "Workshop SMS · Participar";
   });
   onValue(r(`rooms/${code}/state`), (s) => {
     state = s.val() || {};
@@ -135,6 +135,7 @@ function msgCard(icon, title, text = "") {
 }
 
 function buildScreen() {
+  if (state.view === "summary") return msgCard("📈", "Obrigado por participar!", "Confira o resumo de todas as respostas no telão.");
   if (state.view === "leaderboard") return msgCard("🏆", "Ranking no telão!", "Olhe para a tela para ver quem está na frente.");
   if (state.view !== "question" || !state.qid)
     return msgCard("🎉", name ? `Você está dentro, ${name}!` : "Você está dentro!", "Aguarde: as perguntas aparecem aqui automaticamente.");

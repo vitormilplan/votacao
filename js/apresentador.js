@@ -53,6 +53,7 @@ function showHome(err = "") {
   history.replaceState(null, "", location.pathname);
   const rooms = myRooms();
   app.innerHTML = `<div class="wrap">
+    <div class="home-brand"><div class="brand-logos"><img class="milplan" src="img/milplan-branco.png" alt="Milplan Engenharia"><span class="sep-v"></span><img class="workshop" src="img/workshop.png" alt="Workshop SMS"></div></div>
     <header class="home-head">
       <h1>Painel do apresentador</h1>
       <p class="muted">Crie uma sala, monte as perguntas e projete. A plateia entra pelo celular, sem instalar nada.</p>
@@ -138,6 +139,7 @@ function buildEditor() {
   app.innerHTML = `<div class="editor" id="editor">
     <header class="ed-head">
       <a class="btn ghost small" href="apresentador.html">← Salas</a>
+      <img class="brand-mini" src="img/workshop-icone.png" alt="">
       <input id="roomTitle" class="title-input" maxlength="80" value="${esc(room.title || "")}" placeholder="Nome do evento">
       <span class="code-pill">Código <b>${code}</b></span>
       <div class="spacer"></div>
@@ -391,20 +393,34 @@ function goTo(qid) {
 const goLobby = () => setState({ view: "lobby", showResults: room.state?.showResults !== false });
 const showLeaderboard = () => update(r(`rooms/${code}/state`), { view: "leaderboard", open: false });
 
+const showSummary = () => update(r(`rooms/${code}/state`), { view: "summary", open: false });
+const hasQuiz = () => sortedQs().some((q) => q.type === "quiz");
+
+// Sequência: entrada → perguntas → ranking (se houver quiz) → resumo final
 function navigate(dir) {
   const qs = sortedQs();
   const st = room.state || {};
   const idx = st.qid ? qs.findIndex((q) => q.id === st.qid) : -1;
-  if (st.view === "lobby" || idx === -1) { if (dir > 0 && qs.length) goTo(qs[0].id); return; }
+  if (st.view === "summary") {
+    if (dir > 0) return;
+    if (hasQuiz()) return update(r(`rooms/${code}/state`), { view: "leaderboard", qid: qs.at(-1)?.id ?? null, open: false });
+    return qs.length ? goTo(qs.at(-1).id) : goLobby();
+  }
+  if (st.view === "lobby" || idx === -1) {
+    if (dir > 0) qs.length ? goTo(qs[0].id) : showSummary();
+    return;
+  }
   if (st.view === "leaderboard") {
     if (dir < 0) goTo(qs[idx].id);
     else if (qs[idx + 1]) goTo(qs[idx + 1].id);
+    else showSummary();
     return;
   }
   const ni = idx + dir;
   if (ni < 0) goLobby();
   else if (ni < qs.length) goTo(qs[ni].id);
-  else showLeaderboard();
+  else if (hasQuiz()) showLeaderboard();
+  else showSummary();
 }
 
 function startQuiz() {
@@ -466,8 +482,8 @@ function makeQr(el, size) {
 function buildStage() {
   app.innerHTML = `<div class="stage" id="stage">
     <div class="topbar">
-      <div class="join-info">Entre em <b>${esc(joinDisplay())}</b> · código <b class="code-hl">${code}</b></div>
-      <div class="top-right"><span id="pCount" class="pcount">👥 0</span><div id="miniQr" class="mini-qr"></div></div>
+      <div class="brand-logos"><img class="milplan" src="img/milplan-branco.png" alt="Milplan Engenharia"><span class="sep-v"></span><img class="workshop" src="img/workshop.png" alt="Workshop SMS"></div>
+      <div class="top-right"><span class="code-box">Código <b class="code-hl">${code}</b></span><span id="pCount" class="pcount">👥 0</span><div id="miniQr" class="mini-qr"></div></div>
     </div>
     <main id="content" class="content"></main>
     <div class="controls" id="controls"></div>
@@ -488,6 +504,7 @@ function buildStage() {
       next: () => navigate(1),
       lobby: goLobby,
       leaderboard: showLeaderboard,
+      summary: showSummary,
       toggleOpen: () => update(r(`rooms/${code}/state`), { open: !st.open }),
       toggleResults: () => update(r(`rooms/${code}/state`), { showResults: st.showResults === false }),
       startQuiz,
@@ -534,7 +551,7 @@ function renderControls() {
     mid = `<button data-act="toggleOpen" class="btn ghost">${st.open ? "🔒 Encerrar votação" : "🔓 Reabrir votação"}</button>`;
     if (q.type !== "qa") mid += `<button data-act="toggleResults" class="btn ghost">${st.showResults === false ? "👁 Mostrar resultados" : "🙈 Ocultar resultados"}</button>`;
   }
-  const pos = st.view === "leaderboard" ? "Ranking" : st.view !== "question" ? "Início" : `${idx + 1} / ${qs.length}`;
+  const pos = st.view === "leaderboard" ? "Ranking" : st.view === "summary" ? "Resumo" : st.view !== "question" ? "Início" : `${idx + 1} / ${qs.length}`;
   document.getElementById("controls").innerHTML = `
     <button data-act="prev" class="btn ghost" title="Anterior (←)">←</button>
     <span class="pos">${pos}</span>
@@ -542,6 +559,7 @@ function renderControls() {
     <span class="sep"></span>${mid}<span class="sep"></span>
     <button data-act="lobby" class="btn ghost" title="Tela de entrada (Q)">📱 QR code</button>
     <button data-act="leaderboard" class="btn ghost">🏆 Ranking</button>
+    <button data-act="summary" class="btn ghost">📈 Resumo</button>
     <button data-act="fullscreen" class="btn ghost" title="Tela cheia (F)">⛶</button>
     <button data-act="exit" class="btn ghost">✕ Editar</button>`;
 }
@@ -570,13 +588,14 @@ function renderContent() {
 function skeleton() {
   const st = room.state || {};
   if (st.view === "leaderboard") return `<div class="lb"><h1>🏆 Ranking</h1><ol id="lbList" class="lb-list"></ol></div>`;
+  if (st.view === "summary") return `<div class="dash" id="dash"></div>`;
   const q = st.view === "question" ? room.questions?.[st.qid] : null;
   if (!q) {
     return `<div class="lobby">
       <div class="lobby-qr" id="bigQr"></div>
       <div class="lobby-text">
-        <h1>${esc(room.title || "Participe!")}</h1>
-        <p class="lead">Aponte a câmera do celular para o QR code<br>ou acesse <b>${esc(joinDisplay())}</b> e digite o código</p>
+        <img class="lobby-brand" src="img/workshop.png" alt="Workshop SMS · A vida é nosso maior valor">
+        <p class="lead">Aponte a câmera do celular para o QR code<br>e participe com o código</p>
         <div class="lobby-code">${code}</div>
         <div id="lobbyNames" class="names"></div>
       </div>
@@ -634,6 +653,7 @@ function hashColor(s) {
 function fill() {
   const st = room.state || {};
   if (st.view === "leaderboard") return fillLeaderboard();
+  if (st.view === "summary") return fillSummary();
   const q = st.view === "question" ? room.questions?.[st.qid] : null;
   if (!q) {
     const el = document.getElementById("lobbyNames");
@@ -752,4 +772,105 @@ function fillLeaderboard() {
   el.innerHTML = list.length
     ? list.map((s, i) => `<li class="${i < 3 ? "top" : ""}"><span class="rank">${medals[i] || i + 1}</span><span class="lb-name">${esc(s.n || "Anônimo")}</span><span class="lb-hits">${s.hits} ✓</span><span class="lb-pts">${s.pts}</span></li>`).join("")
     : `<p class="waiting">Nenhum quiz respondido ainda.</p>`;
+}
+
+// ----- resumo final (dashboard) -----
+function tally(q, resps) {
+  const n = q.type === "scale" ? Number(q.max) || 5 : toArray(q.options).length;
+  const counts = Array(n).fill(0);
+  let sum = 0;
+  for (const rsp of resps) {
+    if (q.type === "scale") { const v = Number(rsp.v); if (v >= 1 && v <= n) { counts[v - 1]++; sum += v; } }
+    else (Array.isArray(rsp.v) ? rsp.v : [rsp.v]).forEach((i) => { if (counts[i] != null) counts[i]++; });
+  }
+  return { counts, sum };
+}
+
+function wordFreq(resps) {
+  const freq = new Map();
+  for (const rsp of resps) for (const w of toArray(rsp.v)) {
+    const k = String(w).trim().toLowerCase().replace(/\s+/g, " ");
+    if (k) freq.set(k, (freq.get(k) || 0) + 1);
+  }
+  return [...freq.entries()].sort((a, b) => b[1] - a[1]);
+}
+
+function hbars(labels, counts, total, correct = null) {
+  const max = Math.max(1, ...counts);
+  return `<div class="hbars">${labels.map((l, i) => {
+    const pct = total ? Math.round((counts[i] / total) * 100) : 0;
+    return `<div class="hbar ${correct === i ? "correct" : ""} ${correct != null && correct !== i ? "dim" : ""}">
+      <div class="hbar-top"><span>${correct === i ? "✓ " : ""}${esc(l)}</span><b>${pct}%</b></div>
+      <div class="hbar-track"><div class="hbar-fill" style="width:${(counts[i] / max) * 100}%;background:${COLORS[i % COLORS.length]}"></div></div>
+    </div>`;
+  }).join("")}</div>`;
+}
+
+function dashCard(q, i) {
+  const resps = Object.values(room.responses?.[q.id] || {});
+  let n = resps.length, unit = n === 1 ? "resposta" : "respostas", body = "", wide = false;
+  const empty = `<p class="muted dempty">Sem respostas</p>`;
+  if (q.type === "choice") {
+    const { counts } = tally(q, resps);
+    body = n ? hbars(toArray(q.options), counts, n) : empty;
+  } else if (q.type === "quiz") {
+    const { counts } = tally(q, resps);
+    const c = room.runs?.[q.id] != null ? Number(room.answers?.[q.id] ?? 0) : null;
+    const hits = c == null ? 0 : counts[c] || 0;
+    body = n ? `<div class="dstat"><b>${Math.round((hits / n) * 100)}%</b> acertaram</div>${hbars(toArray(q.options), counts, n, c)}` : empty;
+  } else if (q.type === "scale") {
+    const { counts, sum } = tally(q, resps);
+    const max = Math.max(1, ...counts);
+    body = n ? `<div class="dscale">
+        <div class="davg"><b>${(sum / n).toFixed(1).replace(".", ",")}</b><span>média de 1 a ${counts.length}</span></div>
+        <div class="mini-cols">${counts.map((c, k) => `<div class="mcol"><div class="mcol-track"><div class="mcol-bar" style="height:${(c / max) * 100}%;background:${COLORS[k % COLORS.length]}"></div></div><span>${k + 1}</span></div>`).join("")}</div>
+      </div>` : empty;
+  } else if (q.type === "wordcloud") {
+    const words = wordFreq(resps).slice(0, 18);
+    const top = words[0]?.[1] || 1;
+    wide = true;
+    body = words.length ? `<div class="mini-cloud">${words.map(([w, c]) => `<span style="font-size:${0.9 + Math.pow(c / top, 0.75) * 1.9}rem;color:${hashColor(w)}">${esc(w)}</span>`).join("")}</div>` : empty;
+  } else if (q.type === "open") {
+    const last = [...resps].sort((a, b) => (b.t || 0) - (a.t || 0));
+    wide = true;
+    body = n ? `<div class="dquotes">${last.slice(0, 4).map((rsp, k) => `<blockquote style="--c:${COLORS[k % COLORS.length]}">${esc(rsp.v)}${rsp.n ? `<cite>${esc(rsp.n)}</cite>` : ""}</blockquote>`).join("")}</div>
+      ${n > 4 ? `<p class="muted small">+ ${n - 4} respostas no CSV</p>` : ""}` : empty;
+  } else if (q.type === "qa") {
+    const items = Object.values(room.qa?.[q.id] || {}).map((it) => ({ ...it, v: Object.keys(it.votes || {}).length })).sort((a, b) => b.v - a.v);
+    n = items.length; unit = n === 1 ? "pergunta" : "perguntas";
+    body = n ? `<ol class="dqa">${items.slice(0, 4).map((it) => `<li><span class="dvotes">👍 ${it.v}</span>${esc(it.text)}${it.done ? ` <span class="muted">✓</span>` : ""}</li>`).join("")}</ol>` : empty;
+  }
+  return `<div class="dcard ${wide ? "wide" : ""}">
+    <div class="dcard-head"><span class="q-num">${i + 1}</span><h3>${esc(q.title)}</h3><span class="dcount">${n} ${unit}</span></div>
+    ${body}
+  </div>`;
+}
+
+function fillSummary() {
+  const el = document.getElementById("dash");
+  if (!el) return;
+  const qs = sortedQs();
+  const people = Object.keys(room.participants || {}).length;
+  const total = qs.reduce((a, q) => a + countResponses(q.id, q.type), 0);
+  let hits = 0, tries = 0;
+  qs.filter((q) => q.type === "quiz" && room.runs?.[q.id] != null).forEach((q) => {
+    const c = Number(room.answers?.[q.id] ?? 0);
+    Object.values(room.responses?.[q.id] || {}).forEach((rsp) => { tries++; if (Number(rsp.v) === c) hits++; });
+  });
+  const engaged = people && qs.length ? Math.round((qs.filter((q) => q.type !== "qa").reduce((a, q) => a + countResponses(q.id, q.type), 0) / (people * Math.max(1, qs.filter((q) => q.type !== "qa").length))) * 100) : 0;
+  const kpis = [
+    [people, "participantes"],
+    [total, "respostas"],
+    [qs.length, "perguntas"],
+    [`${Math.min(100, engaged)}%`, "de participação média"],
+  ];
+  if (tries) kpis.push([`${Math.round((hits / tries) * 100)}%`, "de acertos no quiz"]);
+  const scrollTop = el.scrollTop;
+  el.innerHTML = `
+    <div class="dash-head">
+      <h1>Resumo · ${esc(room.title || "")}</h1>
+      <div class="kpis">${kpis.map(([v, l]) => `<div class="kpi"><b>${v}</b><span>${l}</span></div>`).join("")}</div>
+    </div>
+    <div class="dash-grid">${qs.map(dashCard).join("") || `<p class="waiting">Nenhuma pergunta.</p>`}</div>`;
+  el.scrollTop = scrollTop;
 }

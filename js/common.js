@@ -42,7 +42,8 @@ export const TYPES = {
   qa:        { label: "Perguntas da plateia", icon: "🙋" },
 };
 
-export const COLORS = ["#7c6cff", "#22c3a6", "#ff6b9a", "#ffc24b", "#3aa0ff", "#ff8a5b", "#4fd1e8", "#b48cff"];
+// Cores dos balões do logo do Workshop SMS (+ versões claras)
+export const COLORS = ["#fab32a", "#2e9a7e", "#3d7bd9", "#d6303c", "#f6d08a", "#7fcdb5", "#8fb2ec", "#ef8a92"];
 
 export function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
