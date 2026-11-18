@@ -1,0 +1,48 @@
+{
+  "rules": {
+    "rooms": {
+      "$room": {
+        ".read": "auth != null && data.child('owner').val() === auth.uid",
+        ".write": "auth != null && (!data.exists() || data.child('owner').val() === auth.uid)",
+        "owner": {
+          ".read": true,
+          ".validate": "newData.isString() && (data.exists() ? newData.val() === data.val() : newData.val() === auth.uid)"
+        },
+        "title": { ".read": true },
+        "state": { ".read": true },
+        "questions": { ".read": true },
+        "participants": {
+          "$uid": {
+            ".write": "auth != null && auth.uid === $uid",
+            "n": { ".validate": "newData.isString() && newData.val().length <= 40" }
+          }
+        },
+        "responses": {
+          "$qid": {
+            "$uid": {
+              ".read": "auth != null && auth.uid === $uid",
+              ".write": "auth != null && auth.uid === $uid && newData.exists() && root.child('rooms').child($room).child('state/qid').val() === $qid && root.child('rooms').child($room).child('state/open').val() === true",
+              ".validate": "newData.hasChildren(['v', 't'])",
+              "n": { ".validate": "newData.isString() && newData.val().length <= 40" }
+            }
+          }
+        },
+        "qa": {
+          ".read": true,
+          "$qid": {
+            "$item": {
+              ".write": "auth != null && !data.exists() && newData.child('uid').val() === auth.uid && root.child('rooms').child($room).child('state/qid').val() === $qid && root.child('rooms').child($room).child('state/open').val() === true",
+              "text": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 300" },
+              "votes": {
+                "$voter": {
+                  ".write": "auth != null && auth.uid === $voter && data.parent().parent().exists()",
+                  ".validate": "newData.val() === true"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
